@@ -1,1 +1,1 @@
-# studycompass
+StudyCompass is a web app that converts course syllabi into personalized study plans. Students upload PDFs or images, review automatically extracted assignments and deadlines, and enter their weekly availability. The app then breaks larger assignments into manageable steps, schedules study sessions, and syncs approved events to an external calendar.
