@@ -1,9 +1,16 @@
-StudyCompass is a web app that converts course syllabi into personalized study plans. Students upload PDFs or images, review automatically extracted assignments and deadlines, and enter their weekly availability. The app then breaks larger assignments into manageable steps, schedules study sessions, and syncs approved events to an external calendar.
+# React + Vite
 
-| Feature                     | What it does                                                                                       |
-| --------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Syllabus extraction**     | Identifies courses, assignments, exams, deadlines, and grading weights from uploaded files.        |
-| **Student review**          | Lets students confirm or correct extracted information before scheduling.                          |
-| **Project breakdown**       | Suggests milestones such as research → outline → draft → revision, with dependencies between them. |
-| **Personalized scheduling** | Places study sessions into available time slots based on deadlines and estimated effort.           |
-| **Calendar integration**    | Syncs deadlines and study sessions to a service such as Google Calendar.                           |
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the Oxlint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
