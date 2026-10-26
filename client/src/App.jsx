@@ -21,6 +21,7 @@ function App() {
             Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
           </p>
         </div>
+        <h1 className="text-3xl font-bold text-blue-600">Tailwind is working</h1>
         <button
           type="button"
           className="counter"
