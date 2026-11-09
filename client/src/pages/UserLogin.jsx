@@ -9,7 +9,7 @@ const tabs = [
   { id: 'signup', label: 'Create Account' },
 ]
 
-export default function UserLogin() {
+export default function UserLogin({ onPreviewContinue }) {
   const [activeTab, setActiveTab] = useState('signin')
   const tabRefs = useRef([])
   const resetDialog = useRef(null)
@@ -65,7 +65,7 @@ export default function UserLogin() {
               {/* Unmount inactive forms so passwords/errors are discarded on a tab change. */}
               {activeTab === tab.id && (tab.id === 'signin'
                 ? <SignInForm onForgotPassword={() => resetDialog.current.showModal()} />
-                : <CreateAccountForm />)}
+                : <CreateAccountForm onPreviewContinue={onPreviewContinue} />)}
             </div>
           ))}
           <p className="sc-auth-preview-note" id="sc-auth-preview-note">

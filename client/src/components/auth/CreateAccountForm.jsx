@@ -3,7 +3,7 @@ import { getPasswordRequirements, validateCreateAccount } from '../../utils/auth
 import AuthField from './AuthField.jsx'
 import AuthIcon from './AuthIcon.jsx'
 
-export default function CreateAccountForm() {
+export default function CreateAccountForm({ onPreviewContinue }) {
   const [values, setValues] = useState({
     email: '', username: '', password: '', confirmPassword: '', permission: false,
   })
@@ -28,6 +28,12 @@ export default function CreateAccountForm() {
       return
     }
     // Account creation will need server-side validation and a real auth provider.
+    // Advance the frontend preview only; this callback receives no credentials.
+    if (onPreviewContinue) {
+      const error = onPreviewContinue()
+      if (error) setMessage(error)
+      return
+    }
     setMessage('The form is ready. Registration is not available yet; no account was created and nothing was sent or saved.')
   }
 
@@ -77,7 +83,7 @@ export default function CreateAccountForm() {
         <p className="sc-auth-hint">Account terms will be available when registration opens.</p>
       </div>
       <button className="sc-auth-submit" type="submit">
-        Create Account &amp; Start Planning <AuthIcon name="check" size={18} />
+        {onPreviewContinue ? 'Continue to availability preview' : 'Create Account & Start Planning'} <AuthIcon name="check" size={18} />
       </button>
       <div className="sc-auth-feedback" role="status" aria-atomic="true">
         {message && <p>{message}</p>}

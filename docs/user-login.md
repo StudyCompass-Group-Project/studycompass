@@ -1,5 +1,11 @@
 # User login page
 
+> On `onboarding-study-availability`, the login preview now continues to the
+> availability screen after valid registration input. See
+> [the onboarding integration guide](onboarding-study-availability.md) for the
+> current routes and shared calendar data. The standalone behavior below describes
+> the original `user-login` branch; authentication remains unimplemented.
+
 This implements the Google Stitch login/create-account design for issue #48.
 It follows the calendar dashboard's approach: React components, scoped plain
 CSS, local SVG icons, and an explicit frontend preview. No dependency versions
