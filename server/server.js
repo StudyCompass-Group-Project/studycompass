@@ -1,10 +1,11 @@
 // This import MUST come first. It reads .env into process.env before any other
-// module (like db/index.js) tries to use those values.
+// module (db, config/cookies.js, routes/auth.js) tries to use those values.
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pool from "./db/index.js";
+import authRoutes from "./routes/auth.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -13,31 +14,29 @@ const PORT = process.env.PORT || 5000;
 app.use(
   cors({
     origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true, // allow the browser to send/receive cookies cross-origin
+    credentials: true,
   })
 );
-app.use(express.json()); // parses JSON request bodies into req.body
-app.use(cookieParser()); // parses the Cookie header into req.cookies
+app.use(express.json());
+app.use(cookieParser());
 
 // --- Routes ---
-// Quick check that the server is up AND can talk to PostgreSQL.
 app.get("/api/health", async (req, res) => {
   const { rows } = await pool.query("SELECT NOW() AS now");
   res.json({ status: "ok", dbTime: rows[0].now });
 });
 
-// Future routers from /routes get mounted here, e.g.:
-// import authRoutes from "./routes/auth.js";
-// app.use("/api/auth", authRoutes);
+app.use("/api/auth", authRoutes); // -> /api/auth/register, /api/auth/login
 
 // --- Error handler (must be last, takes 4 arguments) ---
-// Express 5 forwards errors from async handlers here automatically.
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: "Internal server error" });
+  const status = err.status || 500;
+  if (status >= 500) console.error(err);
+  res.status(status).json({
+    error: status >= 500 ? "Internal server error" : err.message,
+  });
 });
 
-// Verify the database is reachable before accepting traffic.
 try {
   await pool.query("SELECT 1");
   console.log("Connected to PostgreSQL");
