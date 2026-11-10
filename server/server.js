@@ -5,7 +5,12 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pool from "./db/index.js";
+import requireAuth from "./middleware/auth.js";
+
 import authRoutes from "./routes/auth.js";
+import courseRoutes from "./routes/courses.js";
+import assignmentRoutes from "./routes/assignments.js";
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -27,6 +32,9 @@ app.get("/api/health", async (req, res) => {
 });
 
 app.use("/api/auth", authRoutes); // -> /api/auth/register, /api/auth/login
+
+app.use("/api/courses", requireAuth, courseRoutes);
+app.use("/api/assignments", requireAuth, assignmentRoutes);
 
 // --- Error handler (must be last, takes 4 arguments) ---
 app.use((err, req, res, next) => {
