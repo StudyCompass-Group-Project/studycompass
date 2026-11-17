@@ -16,6 +16,7 @@ CREATE TABLE users (
     urgent_exam_alerts BOOLEAN DEFAULT TRUE,
     deadline_alerts BOOLEAN DEFAULT TRUE,
     study_reminder_minutes INT DEFAULT 15, -- minutes before study session for reminder
+    timezone VARCHAR(64) NOT NULL DEFAULT 'UTC', -- IANA name, e.g. 'America/Los_Angeles'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -46,8 +47,10 @@ CREATE TABLE course_schedules (
 CREATE TABLE syllabi (
     id SERIAL PRIMARY KEY,
     course_id INT REFERENCES courses(id) ON DELETE CASCADE,
-    file_url TEXT NOT NULL,
+    file_url TEXT, -- optional: uploaded files are analysed and discarded, not stored
+    original_filename VARCHAR(255),
     parsed_metadata JSONB, -- Stores extracted schedule, grading weights, policies
+    applied_at TIMESTAMP WITH TIME ZONE, -- set once the extracted data was added to the course
     uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -114,3 +117,6 @@ CREATE INDEX idx_course_schedules_course_id ON course_schedules(course_id);
 CREATE INDEX idx_assignments_course_id ON assignments(course_id);
 CREATE INDEX idx_study_sessions_user_time ON study_sessions(user_id, start_time, end_time);
 CREATE INDEX idx_availability_user_time ON availability_blocks(user_id, start_time, end_time);
+CREATE INDEX idx_syllabi_course_id ON syllabi(course_id);
+CREATE INDEX idx_projects_user_id ON projects(user_id);
+CREATE INDEX idx_project_steps_project_id ON project_steps(project_id);

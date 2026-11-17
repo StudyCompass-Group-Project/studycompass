@@ -10,6 +10,13 @@ import requireAuth from "./middleware/auth.js";
 import authRoutes from "./routes/auth.js";
 import courseRoutes from "./routes/courses.js";
 import assignmentRoutes from "./routes/assignments.js";
+import projectRoutes from "./routes/projects.js";
+import availabilityRoutes from "./routes/availability.js";
+import sessionRoutes from "./routes/sessions.js";
+import settingsRoutes from "./routes/settings.js";
+import dashboardRoutes from "./routes/dashboard.js";
+import syllabusRoutes from "./routes/syllabi.js";
+import studyPlanRoutes from "./routes/studyPlan.js";
 
 
 const app = express();
@@ -35,13 +42,26 @@ app.use("/api/auth", authRoutes); // -> /api/auth/register, /api/auth/login
 
 app.use("/api/courses", requireAuth, courseRoutes);
 app.use("/api/assignments", requireAuth, assignmentRoutes);
+app.use("/api/projects", requireAuth, projectRoutes);
+app.use("/api/availability", requireAuth, availabilityRoutes);
+app.use("/api/study-sessions", requireAuth, sessionRoutes);
+app.use("/api/settings", requireAuth, settingsRoutes);
+app.use("/api/dashboard", requireAuth, dashboardRoutes);
+app.use("/api/syllabi", requireAuth, syllabusRoutes); // Gemini: syllabus -> assignments
+app.use("/api/study-plan", requireAuth, studyPlanRoutes); // Gemini: free time -> study sessions
+
+// Any other /api URL: a JSON 404 instead of Express's default HTML page
+app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
 
 // --- Error handler (must be last, takes 4 arguments) ---
 app.use((err, req, res, next) => {
   const status = err.status || 500;
   if (status >= 500) console.error(err);
+  // 4xx messages are for the client. 5xx messages stay hidden unless we threw the error
+  // on purpose with a safe message (HttpError sets expose = true, e.g. "AI service busy").
+  const showMessage = status < 500 || err.expose === true;
   res.status(status).json({
-    error: status >= 500 ? "Internal server error" : err.message,
+    error: showMessage ? err.message : "Internal server error",
   });
 });
 

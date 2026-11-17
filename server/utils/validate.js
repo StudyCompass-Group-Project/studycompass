@@ -7,6 +7,9 @@ export class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
+    // expose = "this message is safe to show the client", even for 5xx errors we throw
+    // on purpose (e.g. 502 when the AI service fails). server.js checks it.
+    this.expose = true;
   }
 }
  
@@ -200,4 +203,16 @@ export function assertRange(start, end, label = "end_time") {
   if (new Date(end) <= new Date(start)) {
     throw new HttpError(400, `${label} must be after start_time`);
   }
+}
+
+// An IANA timezone name such as "America/Los_Angeles" or "UTC".
+export function parseTimezone(value, field = "timezone", { required = false } = {}) {
+  const v = parseString(value, field, { required, max: 64 });
+  if (v === null) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: v });
+  } catch {
+    bad(`${field} must be an IANA timezone like "America/Los_Angeles"`);
+  }
+  return v;
 }

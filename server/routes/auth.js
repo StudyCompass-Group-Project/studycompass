@@ -2,7 +2,8 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import pool from "../db/index.js";
-import { COOKIE_NAME, cookieOptions } from "../config/cookies.js";
+import { COOKIE_NAME, cookieOptions, clearCookieOptions } from "../config/cookies.js";
+import requireAuth from "../middleware/auth.js";
  
 const router = Router();
  
@@ -179,4 +180,33 @@ router.post("/login", async (req, res) => {
   });
 });
  
+// ---------------------------------------------------------------------------
+// POST /api/auth/logout
+// The cookie is httpOnly, so JavaScript on the page can't delete it; only the
+// server can, by sending a Set-Cookie that expires it. The attributes must match
+// the ones used when it was set (see clearCookieOptions in config/cookies.js).
+// ---------------------------------------------------------------------------
+router.post("/logout", (req, res) => {
+  res.clearCookie(COOKIE_NAME, clearCookieOptions);
+  res.json({ message: "Logged out" });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/auth/me
+// The client calls this on page load to learn "am I logged in, and as whom?".
+// requireAuth has already verified the cookie and set req.userId.
+// ---------------------------------------------------------------------------
+router.get("/me", requireAuth, async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT id, email, username FROM users WHERE id = $1",
+    [req.userId]
+  );
+  // A valid token for a deleted account: treat the session as over
+  if (rows.length === 0) {
+    res.clearCookie(COOKIE_NAME, clearCookieOptions);
+    return res.status(401).json({ error: "User no longer exists" });
+  }
+  return res.json({ user: rows[0] });
+});
+
 export default router;
