@@ -1,0 +1,29 @@
+# .github/labeler.yml
+
+# Limit changed-files based labels to 5
+changed-files-labels-limit: 5
+
+# Label definitions - these are subject to the limit
+frontend:
+  - changed-files:
+    - any-glob-to-any-file: 'src/frontend/**'
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file: 'src/backend/**'
+
+docs:
+  - changed-files:
+    - any-glob-to-any-file: 'docs/**'
+
+# This label has both branch and changed-files rules.
+# It is still subject to the limit because it includes changed-files.
+mixed:
+  - any:
+    - head-branch: '^feature/'
+    - changed-files:
+      - any-glob-to-any-file: 'src/mixed/**'
+
+# Branch-based labels are NOT affected by the limit
+feature:
+  - head-branch: '^feature/'
