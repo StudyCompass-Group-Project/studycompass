@@ -62,6 +62,8 @@ app.use((err, req, res, next) => {
   const showMessage = status < 500 || err.expose === true;
   res.status(status).json({
     error: showMessage ? err.message : "Internal server error",
+    // Development only: the underlying cause, when a route attached one (see services/gemini.js)
+    ...(err.detail && process.env.NODE_ENV !== "production" ? { detail: err.detail } : {}),
   });
 });
 

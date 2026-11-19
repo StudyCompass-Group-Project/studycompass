@@ -32,23 +32,62 @@ const getModel = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
 // ---------------------------------------------------------------------------
 // Low-level call + defensive JSON parsing
 // ---------------------------------------------------------------------------
-async function generateJson({ system, parts, label }) {
-  // Outside the try on purpose: a missing API key must surface as its own clear 503,
-  // not get caught below and relabelled as a generic "AI service failed" 502.
+// Google's models are sometimes overloaded for a few seconds ("503 UNAVAILABLE ... high
+// demand"), especially newer ones. That is temporary and not our fault, so we retry
+// before giving up. Only these statuses are retried: 429 means quota or rate limits,
+// where hammering the API again would not help.
+const RETRY_STATUSES = new Set([500, 503, 504]);
+const RETRY_DELAY_MS = Number(process.env.GEMINI_RETRY_DELAY_MS ?? 1500);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Up to 3 attempts. If GEMINI_FALLBACK_MODEL is set, the last attempt uses it, so a
+// busy primary model doesn't take the whole feature down.
+async function callGemini({ system, parts, label }) {
   const ai = getClient();
+  const primary = getModel();
+  const fallback = process.env.GEMINI_FALLBACK_MODEL;
+  const models = [primary, primary, fallback && fallback !== primary ? fallback : primary];
+
+  for (let i = 0; i < models.length; i++) {
+    try {
+      return await ai.models.generateContent({
+        model: models[i],
+        contents: parts, // an array of { text } and { inlineData } parts
+        config: { systemInstruction: system },
+      });
+    } catch (err) {
+      const last = i === models.length - 1;
+      if (!RETRY_STATUSES.has(err?.status) || last) throw err;
+      console.error(
+        `Gemini ${err.status} (${label}, ${models[i]}), retrying ${i + 2}/${models.length} with ${models[i + 1]}...`
+      );
+      await sleep(RETRY_DELAY_MS * (i + 1));
+    }
+  }
+}
+
+async function generateJson({ system, parts, label }) {
   let response;
   try {
-    response = await ai.models.generateContent({
-      model: getModel(),
-      contents: parts, // an array of { text } and { inlineData } parts
-      config: { systemInstruction: system },
-    });
+    response = await callGemini({ system, parts, label });
   } catch (err) {
+    // A missing API key is already a clear HttpError (503); let it through untouched
+    if (err instanceof HttpError) throw err;
     console.error(`Gemini request failed (${label}):`, err);
-    if (err?.status === 429) {
-      throw new HttpError(503, "The AI service is busy right now. Please try again shortly.");
+    // 429 = quota/rate limit, 503 = Google's model is overloaded: both mean "try later"
+    const busy = err?.status === 429 || err?.status === 503;
+    const failure = new HttpError(
+      busy ? 503 : 502,
+      busy
+        ? "The AI service is busy right now. Please try again in a minute."
+        : "The AI service could not process this request. Please try again."
+    );
+    // While developing, pass the real reason along (it also appears in the server
+    // terminal). Never in production: it can contain internal details.
+    if (process.env.NODE_ENV !== "production") {
+      failure.detail = String(err?.message ?? err).slice(0, 400);
     }
-    throw new HttpError(502, "The AI service could not process this request. Please try again.");
+    throw failure;
   }
 
   let text;
