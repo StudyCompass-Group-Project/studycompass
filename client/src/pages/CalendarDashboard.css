@@ -1106,3 +1106,18 @@
 }
 .sc-dashboard .sc-availability-notice a { color: #111; text-decoration: underline; text-underline-offset: 3px; }
 .sc-dashboard .sc-availability-conflict { color: #a41313; border-color: #e5b3b3; }
+.sc-syllabus-summary {
+  margin-bottom: 22px;
+  padding: 22px;
+  border: 1px solid #dfe3e7;
+  border-radius: 12px;
+  background: #fff;
+}
+.sc-syllabus-summary-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 16px; }
+.sc-syllabus-summary h2 { font-size: 18px; margin: 0 0 8px; }
+.sc-syllabus-summary p { font-size: 14px; color: #565d63; }
+.sc-syllabus-summary details { padding-top: 14px; margin-top: 14px; border-top: 1px solid #e3e7ec; font-size: 14px; }
+.sc-syllabus-summary summary { cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+.sc-syllabus-summary dl { display: grid; gap: 10px; }
+.sc-syllabus-summary dt { font-weight: 600; }
+.sc-syllabus-summary dd { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }

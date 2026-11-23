@@ -111,7 +111,7 @@ export default function OnboardingStudyAvailability({
       </header>
       <main className="sc-av-main" id="av-main" tabIndex={-1}>
         <section className="sc-av-intro" aria-labelledby="av-heading">
-          <span className="sc-av-step">Step 1 of 2 · Study availability</span>
+          <span className="sc-av-step">Step 1 of 3 · Study availability</span>
           <h1 id="av-heading" tabIndex={-1}>
             Welcome to StudyCompass! Let’s protect your non-study time.
           </h1>

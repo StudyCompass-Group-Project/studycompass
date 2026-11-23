@@ -28,6 +28,7 @@ export default function DashboardInsights({
   today,
   onSelect,
   isDemo,
+  syllabusEnabled = false,
 }) {
   const days = getWeekDays(date)
   const sessions = eventsInRange(events, days[0], days[6]).filter(
@@ -58,7 +59,7 @@ export default function DashboardInsights({
         <InsightHeading
           eyebrow="Course planning"
           title="Sync New Syllabus"
-          detail="Coming soon"
+          detail={syllabusEnabled ? 'Preview' : 'Coming soon'}
         />
         <div className="sc-upload-placeholder">
           <Icon name="upload" size={26} />
@@ -66,8 +67,9 @@ export default function DashboardInsights({
           <p>Upload a syllabus to review assignments and due dates.</p>
         </div>
         <p className="sc-muted">
-          Syllabus upload will be connected in a later task.
+          {syllabusEnabled ? 'Review sample information, then add confirmed deadlines to this calendar.' : 'Syllabus upload will be connected in a later task.'}
         </p>
+        {syllabusEnabled && <a className="sc-button sc-button-dark" href="#/syllabus-upload">Upload syllabus</a>}
       </section>
 
       <section className="sc-card sc-insight-card">

@@ -92,7 +92,8 @@ export default function EventDetailsDialog({ event, onClose, isDemo }) {
       {event.description && (
         <p className="sc-event-description">{event.description}</p>
       )}
-      {isDemo && (
+      {event.isSample && <p className="sc-muted">Reviewed preview data. Automatic syllabus extraction is not connected yet.</p>}
+      {isDemo && !event.isSample && (
         <p className="sc-muted">
           This is sample data. Editing and saving will be connected in a later
           task.

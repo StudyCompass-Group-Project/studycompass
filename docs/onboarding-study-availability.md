@@ -1,5 +1,10 @@
 # Study availability onboarding
 
+> On `onboarding-syllabus-upload`, the placeholder described below is replaced
+> by working upload and manual-review pages. See
+> [Syllabus upload and manual review](onboarding-syllabus-upload.md) for the
+> current routes, preview behavior, and verification status.
+
 The `onboarding-study-availability` branch connects the existing login preview
 to a working availability page based on the supplied Stitch design. The same
 blocked-time rules appear on the existing calendar dashboard and provide the

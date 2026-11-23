@@ -24,7 +24,7 @@ function EventButton({ event, onSelect, compact = false, style }) {
     >
       <span className="sc-event-time">
         {event.type === 'deadline' ? 'Due ' : ''}
-        {event.start}
+        {event.start || (event.type === 'deadline' ? 'time not specified' : '')}
         {!compact && event.end ? `–${event.end}` : ''}
       </span>
       <strong>{event.title}</strong>

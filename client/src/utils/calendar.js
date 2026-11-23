@@ -70,7 +70,7 @@ export function formatTime(time) {
 
 export function eventTimeLabel(event) {
   return event.type === 'deadline'
-    ? `Due ${formatTime(event.start)}`
+    ? event.start ? `Due ${formatTime(event.start)}` : 'Due date · time not specified'
     : `${formatTime(event.start)} – ${formatTime(event.end)}`
 }
 

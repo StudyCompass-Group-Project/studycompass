@@ -1,6 +1,6 @@
 import Icon from './Icon.jsx'
 
-export default function DashboardSidebar({ isDemo, availabilityEnabled = false }) {
+export default function DashboardSidebar({ isDemo, availabilityEnabled = false, syllabusEnabled = false }) {
   return (
     <aside className="sc-sidebar">
       <a
@@ -14,14 +14,14 @@ export default function DashboardSidebar({ isDemo, availabilityEnabled = false }
           <small>ACADEMIC OS</small>
         </span>
       </a>
-      <button
+      {syllabusEnabled ? <a className="sc-button sc-button-dark sc-upload" href="#/syllabus-upload"><Icon name="plus" size={17} /> Upload Syllabus</a> : <button
         className="sc-button sc-button-dark sc-upload"
         type="button"
         disabled
         title="Syllabus upload will be connected in a later task"
       >
         <Icon name="plus" size={17} /> Upload Syllabus
-      </button>
+      </button>}
       <nav aria-label="Main navigation" className="sc-navigation">
         <a href={availabilityEnabled ? '#/calendar-dashboard' : '#calendar-dashboard'} aria-current="page">
           <Icon name="calendar" />

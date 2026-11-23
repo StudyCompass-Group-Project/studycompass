@@ -17,6 +17,7 @@ import {
   getWeekDays,
   shiftDate,
   toDateKey,
+  fromDateKey,
 } from '../utils/calendar.js'
 import { availabilityEvents, findStudyPlanConflicts } from '../utils/availability.js'
 import './CalendarDashboard.css'
@@ -31,9 +32,12 @@ export default function CalendarDashboard({
   onRetry,
   availability = [],
   availabilityPreview = false,
+  syllabusEnabled = false,
+  reviewedCourses = [],
+  initialDate,
 }) {
   const [today] = useState(() => new Date())
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(() => initialDate ? fromDateKey(initialDate) : today)
   const [view, setView] = useState('week')
   const [query, setQuery] = useState('')
   const [course, setCourse] = useState('all')
@@ -76,7 +80,7 @@ export default function CalendarDashboard({
       }}>
         Skip to calendar
       </a>
-      <DashboardSidebar isDemo={isDemo} availabilityEnabled={availabilityPreview} />
+      <DashboardSidebar isDemo={isDemo} availabilityEnabled={availabilityPreview} syllabusEnabled={syllabusEnabled} />
       <div className="sc-workspace">
         <header className="sc-topbar">
           <label className="sc-search">
@@ -95,6 +99,17 @@ export default function CalendarDashboard({
           </span>
         </header>
         <main id="calendar-dashboard" className="sc-main" tabIndex={-1}>
+          {syllabusEnabled && reviewedCourses.length > 0 && <section className="sc-syllabus-summary" aria-labelledby="reviewed-courses-heading">
+            <div className="sc-syllabus-summary-heading"><div><h2 id="reviewed-courses-heading">Reviewed syllabus information</h2>
+              <p>Confirmed preview data · {events.length} deadlines from {reviewedCourses.length} {reviewedCourses.length === 1 ? 'syllabus' : 'syllabi'}. Automatic extraction is not connected.</p></div>
+              <a className="sc-button" href="#/syllabus-upload">Upload another syllabus</a></div>
+            {reviewedCourses.map(record => <details key={record.id}><summary>{record.course.code ? `${record.course.code} · ` : ''}{record.course.name}</summary>
+              <dl><div><dt>Instructor</dt><dd>{record.course.instructor || 'Not supplied'}</dd></div><div><dt>Term</dt><dd>{record.course.term || 'Not supplied'}</dd></div>
+                <div><dt>Topics</dt><dd>{record.course.topics || 'Not supplied'}</dd></div><div><dt>Course notes</dt><dd>{record.course.notes || 'None'}</dd></div>
+                <div><dt>Source</dt><dd>{record.source.name}</dd></div></dl>
+              <p>{record.deadlines.length} confirmed {record.deadlines.length === 1 ? 'deadline' : 'deadlines'}{!record.deadlines.length && ' · No dated calendar items for this course'}.</p>
+            </details>)}
+          </section>}
           {availabilityPreview && <div className="sc-availability-notice">
             <strong>Shared availability preview</strong>
             <span>Your blocked hours come from onboarding and are saved only in this browser tab.</span>
@@ -223,6 +238,7 @@ export default function CalendarDashboard({
                 today={today}
                 onSelect={setSelectedEvent}
                 isDemo={isDemo}
+                syllabusEnabled={syllabusEnabled}
               />
             )}
           </div>
