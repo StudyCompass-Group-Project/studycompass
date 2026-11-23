@@ -40,13 +40,17 @@ const RETRY_STATUSES = new Set([500, 503, 504]);
 const RETRY_DELAY_MS = Number(process.env.GEMINI_RETRY_DELAY_MS ?? 1500);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Up to 3 attempts. If GEMINI_FALLBACK_MODEL is set, the last attempt uses it, so a
-// busy primary model doesn't take the whole feature down.
+// Up to 4 attempts, pausing longer each time (1.5s, 3s, 6s). If GEMINI_FALLBACK_MODEL is
+// set, the attempts alternate: primary, fallback, primary, fallback. An overloaded model
+// is often fine a moment later, and a different model usually has spare capacity right
+// away, so switching beats hammering the same overloaded model.
+const MAX_ATTEMPTS = 4;
 async function callGemini({ system, parts, label }) {
   const ai = getClient();
   const primary = getModel();
   const fallback = process.env.GEMINI_FALLBACK_MODEL;
-  const models = [primary, primary, fallback && fallback !== primary ? fallback : primary];
+  const alternate = fallback && fallback !== primary ? fallback : primary;
+  const models = Array.from({ length: MAX_ATTEMPTS }, (_, i) => (i % 2 === 1 ? alternate : primary));
 
   for (let i = 0; i < models.length; i++) {
     try {
@@ -61,7 +65,7 @@ async function callGemini({ system, parts, label }) {
       console.error(
         `Gemini ${err.status} (${label}, ${models[i]}), retrying ${i + 2}/${models.length} with ${models[i + 1]}...`
       );
-      await sleep(RETRY_DELAY_MS * (i + 1));
+      await sleep(RETRY_DELAY_MS * 2 ** i);
     }
   }
 }
@@ -74,13 +78,17 @@ async function generateJson({ system, parts, label }) {
     // A missing API key is already a clear HttpError (503); let it through untouched
     if (err instanceof HttpError) throw err;
     console.error(`Gemini request failed (${label}):`, err);
-    // 429 = quota/rate limit, 503 = Google's model is overloaded: both mean "try later"
-    const busy = err?.status === 429 || err?.status === 503;
+    // Both mean "try later", but for different reasons, so say which:
+    //   429 = our Gemini quota / rate limit is used up   503 = Google's model is overloaded
+    const quota = err?.status === 429;
+    const overloaded = err?.status === 503;
     const failure = new HttpError(
-      busy ? 503 : 502,
-      busy
-        ? "The AI service is busy right now. Please try again in a minute."
-        : "The AI service could not process this request. Please try again."
+      quota || overloaded ? 503 : 502,
+      quota
+        ? "The AI service has reached its usage limit for now. Please try again later."
+        : overloaded
+          ? "The AI service is busy right now. Please try again in a minute."
+          : "The AI service could not process this request. Please try again."
     );
     // While developing, pass the real reason along (it also appears in the server
     // terminal). Never in production: it can contain internal details.
