@@ -216,3 +216,24 @@ export function parseTimezone(value, field = "timezone", { required = false } = 
   }
   return v;
 }
+
+// ---------------------------------------------------------------------------
+// Weekly class times: [{ day_of_week: "Monday", start_time: "10:00", end_time: "11:15" }]
+// Returns the cleaned array ("HH:MM:SS" times, canonical weekday names). An empty array is
+// valid and means "no class times". Used when a syllabus is applied (routes/syllabi.js).
+// ---------------------------------------------------------------------------
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+export function parseClassSchedule(value, field = "class_schedule") {
+  if (!Array.isArray(value) || value.length > 30) {
+    bad(`${field} must be an array of at most 30 entries`);
+  }
+  return value.map((item, i) => {
+    if (typeof item !== "object" || item === null) bad(`${field}[${i}] must be an object`);
+    const day_of_week = parseEnum(item.day_of_week, `${field}[${i}].day_of_week`, WEEKDAYS, { required: true });
+    const start_time = parseTime(item.start_time, `${field}[${i}].start_time`);
+    const end_time = parseTime(item.end_time, `${field}[${i}].end_time`);
+    if (end_time <= start_time) bad(`${field}[${i}]: end_time must be after start_time`);
+    return { day_of_week, start_time, end_time };
+  });
+}

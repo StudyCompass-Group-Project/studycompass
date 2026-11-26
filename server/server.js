@@ -17,6 +17,7 @@ import settingsRoutes from "./routes/settings.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import syllabusRoutes from "./routes/syllabi.js";
 import studyPlanRoutes from "./routes/studyPlan.js";
+import onboardingRoutes from "./routes/onboarding.js";
 
 
 const app = express();
@@ -49,6 +50,7 @@ app.use("/api/settings", requireAuth, settingsRoutes);
 app.use("/api/dashboard", requireAuth, dashboardRoutes);
 app.use("/api/syllabi", requireAuth, syllabusRoutes); // Gemini: syllabus -> assignments
 app.use("/api/study-plan", requireAuth, studyPlanRoutes); // Gemini: free time -> study sessions
+app.use("/api/onboarding", requireAuth, onboardingRoutes); // first-run progress
 
 // Any other /api URL: a JSON 404 instead of Express's default HTML page
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));

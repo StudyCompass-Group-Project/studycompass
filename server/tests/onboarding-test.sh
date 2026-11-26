@@ -3,7 +3,8 @@
 #
 #   1. a brand-new user registers and logs in
 #   2. sets their study availability (work, commute, family, campus)
-#   3. uploads their first syllabus -> reviews it -> applies it to a course
+#   3. uploads their first syllabus (no course exists yet) -> reviews and EDITS it -> approves it;
+#      the course is created at that moment
 #   4. gets their first study plan (made by Gemini, then verified against their calendar)
 #   5. logs in again later and the app can tell onboarding is finished
 #   + a second user who SKIPS the availability step and still gets a usable plan
@@ -223,8 +224,10 @@ check "dashboard shows zeros" 200 'j.course_count+"|"+j.assignments_total+"|"+j.
 note "Pressing buttons out of order must fail politely:"
 call "$JAR_A" POST /api/study-plan/generate '{}'
 check "plan with nothing to plan -> friendly message, no AI call" 200 'j.sessions.length+"|"+j.message.startsWith("Nothing to plan")' "0|true"
-call "$JAR_A" POST /api/syllabi '{"text":"hello"}';                   check "syllabus without a course -> 400" 400
+call "$JAR_A" POST /api/syllabi '{}';                                  check "syllabus with no file and no text -> 400" 400
 call "$JAR_A" POST /api/syllabi '{"course_id":999999,"text":"hello"}'; check "syllabus for a course that doesn't exist -> 404" 404
+call "$JAR_A" GET /api/onboarding/status ""
+check "the app is told to start with availability" 200 'j.next_step+"|"+j.completed+"|"+j.pending_syllabus_id' "availability|false|null"
 
 # ===========================================================================
 section "2. Step 1: set study availability"
@@ -246,33 +249,35 @@ call "$JAR_A" GET "/api/availability?from=$(iso_in 2000)&to=$(iso_in 2100)" ""
 check "recurring blocks show up in any date range" 200 "j.length" "4"
 call "$JAR_A" POST /api/study-plan/generate '{}'
 check "still nothing to plan before a syllabus exists" 200 'j.sessions.length' "0"
+call "$JAR_A" GET /api/onboarding/status ""
+check "after availability the app is told to ask for a syllabus" 200 'j.next_step+"|"+j.steps.availability.count' "syllabus|4"
 
 # ===========================================================================
 section "3. Step 2: upload the first syllabus"
 # ===========================================================================
-call "$JAR_A" POST /api/courses '{"name":"New course"}'
-check "the app creates a course to attach it to" 201 "j.name" "New course"
-COURSE=$(id_of)
+note "No course exists yet. The syllabus is uploaded first; the course is created when the student approves it."
+COURSE=""
 SYL_OK=0
 PLAN_OK=0
 
 SYL_TEXT="BIO 120: General Biology, Fall 2026. Instructor: Dr. Patel. Lectures meet Monday and Wednesday from 10:00 AM to 11:15 AM. Assignments: Lab Report 1 is due $(date_text 6) at 11:59 PM. Problem Set 2 is due $(date_text 9). The midterm exam is on $(date_text 13) at 2:30 PM. Late work is not accepted."
 ai_pause
 if [ "$MODE" = "pdf" ]; then
-  STATUS=$(curl -s -o "$BODY" -w "%{http_code}" -b "$JAR_A" -c "$JAR_A" -X POST -F "course_id=$COURSE" -F "file=@$PDF;type=application/pdf" "$BASE/api/syllabi")
+  STATUS=$(curl -s -o "$BODY" -w "%{http_code}" -b "$JAR_A" -c "$JAR_A" -X POST -F "file=@$PDF;type=application/pdf" "$BASE/api/syllabi")
 else
-  PAYLOAD=$(node -e 'console.log(JSON.stringify({course_id: Number(process.argv[1]), text: process.argv[2]}))' -- "$COURSE" "$SYL_TEXT")
+  PAYLOAD=$(node -e 'console.log(JSON.stringify({text: process.argv[1]}))' -- "$SYL_TEXT")
   call "$JAR_A" POST /api/syllabi "$PAYLOAD"
 fi
-check "Gemini reads the syllabus" 201 "Array.isArray(j.parsed.assignments) && j.parsed.assignments.length >= 1" "true"
+check "Gemini reads the syllabus (no course needed)" 201 "Array.isArray(j.parsed.assignments) && j.parsed.assignments.length >= 1" "true"
 if [ "$STATUS" != "201" ]; then
   note "Skipping the rest of the onboarding flow: it needs the syllabus to be analysed."
 else
 SYL_OK=1
 SYL=$(id_of)
+UPLOAD_JSON=$(cat "$BODY")
 EXTRACTED_NAME=$(jeval "j.parsed.course.name")
 note "found: $(jeval 'j.parsed.assignments.length') assignments, $(jeval 'j.parsed.class_schedule.length') class times; course name: $EXTRACTED_NAME"
-check "nothing is applied yet (the student reviews first)" 201 "j.applied_at" "null"
+check "it is saved as pending and belongs to no course yet" 201 'j.status+"|"+j.course_id' "pending|null"
 
 if [ "$MODE" = "text" ]; then
   check "found the course name, teacher and semester" 201 '/biology/i.test(j.parsed.course.name||"") && /patel/i.test(j.parsed.course.teacher_name||"") && /fall/i.test(j.parsed.course.semester||"")' "true"
@@ -281,26 +286,48 @@ if [ "$MODE" = "text" ]; then
   check "the 11:59 PM deadline was converted from Pacific time" 201 "j.parsed.assignments.some(a=>new Date(a.due_date).toISOString().slice(11,16) === '07:59')" "true"
 fi
 
-call "$JAR_A" GET "/api/syllabi/$SYL" "";                              check "the review screen can load it" 200 "j.parsed.assignments.length >= 1 && j.applied_at === null" "true"
+note "Before the student approves, nothing real has changed:"
+call "$JAR_A" GET /api/courses "";                                     check "no course was created yet" 200 "j.length" "0"
+call "$JAR_A" GET /api/assignments "";                                 check "no assignments were created yet" 200 "j.length" "0"
+call "$JAR_A" GET /api/onboarding/status ""
+check "the app is told to open the review screen, with the syllabus id to resume" 200 "j.next_step+\"|\"+(j.pending_syllabus_id==$SYL)" "review_syllabus|true"
+call "$JAR_A" GET "/api/syllabi?status=pending" "";                    check "the pending syllabus is listed" 200 "j.length===1 && j[0].id==$SYL && j[0].course_id===null && j[0].status==='pending'" "true"
+call "$JAR_A" GET "/api/syllabi/$SYL" "";                              check "the review screen can load everything Gemini found" 200 "j.parsed.assignments.length >= 1 && j.applied_at === null" "true"
 
-if [ -n "$EXTRACTED_NAME" ] && [ "$EXTRACTED_NAME" != "null" ]; then
-  RENAME=$(node -e 'console.log(JSON.stringify({name: process.argv[1]}))' -- "$EXTRACTED_NAME")
-  call "$JAR_A" PATCH "/api/courses/$COURSE" "$RENAME";                check "the course takes the name found in the syllabus" 200 "j.name" "$EXTRACTED_NAME"
-fi
+# What the student does on the review screen: renames one item, changes its hours, and adds a
+# quiz that is not in the syllabus. Items without a date would need the student to type one,
+# so this test leaves them out.
+APPROVED_NAME="$EXTRACTED_NAME"
+if [ -z "$APPROVED_NAME" ] || [ "$APPROVED_NAME" = "null" ]; then APPROVED_NAME="My first course"; fi
+APPLY_PAYLOAD=$(node -e '
+  const up = JSON.parse(process.argv[1]), manualDue = process.argv[2], name = process.argv[3];
+  const p = up.parsed;
+  const edited = p.assignments.filter((a) => a.due_date).map((a, i) => ({
+    title: i === 0 ? a.title + " (edited)" : a.title, description: a.description,
+    due_date: a.due_date, estimated_hours: i === 0 ? 5 : a.estimated_hours }));
+  edited.push({ title: "Weekly quiz (added by the student)", description: "Not in the syllabus", due_date: manualDue, estimated_hours: 1 });
+  console.log(JSON.stringify({ course: { name }, class_schedule: p.class_schedule, assignments: edited }));
+' -- "$UPLOAD_JSON" "$(iso_in 240)" "$APPROVED_NAME")
+EXPECTED=$(node -e 'console.log(JSON.parse(process.argv[1]).assignments.length)' -- "$APPLY_PAYLOAD")
 
-call "$JAR_A" POST "/api/syllabi/$SYL/apply" '{"apply_schedule":true,"apply_course_info":true}'
-check "the student confirms: assignments are created" 200 "j.assignments_created >= 1" "true"
+call "$JAR_A" POST "/api/syllabi/$SYL/apply" "$APPLY_PAYLOAD"
+check "the student approves their edited version: the course is created" 200 "j.course_created === true && j.assignments_created + j.skipped_duplicates === $EXPECTED" "true"
+COURSE=$(jeval "j.course_id")
 note "applied: $(cat "$BODY")"
 
 call "$JAR_A" GET "/api/courses/$COURSE" ""
-check "the course has its assignments" 200 "j.assignments.length >= 1" "true"
+check "the course has the name the student approved" 200 "j.name" "$APPROVED_NAME"
+check "the student's edits were saved (renamed item, 5 hours, the item they added)" 200 "j.assignments.some(a=>a.title.endsWith(' (edited)') && a.estimated_hours===5) && j.assignments.some(a=>a.title==='Weekly quiz (added by the student)')" "true"
 if [ "$MODE" = "text" ]; then
   check "the course has the weekly class times" 200 "j.schedules.some(s=>s.day_of_week==='Monday') && j.schedules.some(s=>s.day_of_week==='Wednesday')" "true"
-  check "the blank teacher name was filled in" 200 '/patel/i.test(j.teacher_name||"")' "true"
+  check "the details the student did not edit were kept (teacher)" 200 '/patel/i.test(j.teacher_name||"")' "true"
 fi
-call "$JAR_A" GET /api/courses "";                                     check "the course card shows upcoming deadlines" 200 "j[0].next_deadlines.length >= 1 && j[0].assignments_total >= 1" "true"
-call "$JAR_A" GET /api/dashboard/summary "";                           check "dashboard now counts the course and assignments" 200 "j.course_count===1 && j.assignments_total >= 1" "true"
-call "$JAR_A" GET "/api/syllabi?course_id=$COURSE" "";                 check "extraction history shows it as applied" 200 "j.length===1 && j[0].applied_at !== null" "true"
+call "$JAR_A" GET /api/courses "";                                     check "there is exactly one course, and it is this one" 200 "j.length===1 && j[0].id==$COURSE && j[0].next_deadlines.length >= 1" "true"
+call "$JAR_A" GET /api/dashboard/summary "";                           check "dashboard now counts the course and assignments" 200 "j.course_count===1 && j.assignments_total >= 2" "true"
+call "$JAR_A" GET "/api/syllabi?course_id=$COURSE" "";                 check "extraction history shows it as applied and attached to the course" 200 "j.length===1 && j[0].status==='applied' && j[0].applied_at !== null" "true"
+call "$JAR_A" GET /api/onboarding/status ""
+check "the app is told to build the plan next" 200 'j.next_step+"|"+j.pending_syllabus_id' "plan|null"
+call "$JAR_A" POST "/api/syllabi/$SYL/apply" '{}';                     check "approving twice -> 409 (nothing is created twice)" 409
 fi
 
 # ===========================================================================
@@ -318,7 +345,9 @@ else
 PLAN_JSON=$(cat "$BODY")
 PLAN_OK=1
 note "plan: $(jeval 'j.sessions.length') sessions. Gemini says: $(jeval 'j.notes')"
-check "no proposals were rejected by the safety checks" 201 "j.rejected_count" "0"
+# Real Gemini output sometimes includes a session that breaks a rule (overlap, past the due
+# date...). The server rejecting those is the safety net WORKING, so report it, don't fail.
+note "the server rejected $(jeval 'j.rejected_count') invalid proposal(s) from Gemini: $(jeval 'j.rejected.map(r=>r.reason).join(", ")')"
 
 call "$JAR_A" GET "/api/courses/$COURSE" "";   CLASSES_JSON=$(jeval "j.schedules")
 call "$JAR_A" GET /api/assignments "";         ASSIGN_JSON=$(cat "$BODY")
@@ -332,6 +361,7 @@ call "$JAR_A" GET "/api/study-sessions?from=$(iso_in 0)&to=$(iso_in 400)" ""
 N=$(node -e 'console.log(JSON.parse(process.argv[1]).sessions.length)' -- "$PLAN_JSON")
 check "the plan appears on the calendar" 200 "j.filter(s=>s.source==='auto-generated').length" "$N"
 call "$JAR_A" GET /api/courses "";                                     check "the course card shows this week's study sessions" 200 "typeof j[0].study_sessions_this_week === 'number'" "true"
+call "$JAR_A" GET /api/onboarding/status "";                           check "onboarding is complete: the app has nothing more to ask for" 200 'j.completed+"|"+j.next_step' "true|null"
 fi
 fi
 
@@ -340,20 +370,16 @@ section "5. Coming back later: is onboarding finished?"
 # ===========================================================================
 call "$JAR_X" POST /api/auth/login "{\"identifier\":\"$USER_A\",\"password\":\"$PW\"}"
 check "log in again from a fresh browser" 200
-call "$JAR_X" GET /api/availability "";    HAS_AVAIL=$(jeval "j.length > 0")
-call "$JAR_X" GET /api/courses "";         HAS_COURSE=$(jeval "j.length > 0")
-call "$JAR_X" GET /api/syllabi "";         HAS_SYL=$(jeval "j.some(s=>s.applied_at !== null)")
-call "$JAR_X" GET /api/study-sessions "";  HAS_PLAN=$(jeval "j.length > 0")
-note "availability=$HAS_AVAIL  course=$HAS_COURSE  applied syllabus=$HAS_SYL  study plan=$HAS_PLAN"
-[ "$HAS_AVAIL" = "true" ]  && pass "availability step detected as done"       || { STATUS="-"; : > "$BODY"; fail "availability step detected as done"; }
-[ "$HAS_COURSE" = "true" ] && pass "course exists"                            || { STATUS="-"; : > "$BODY"; fail "course exists"; }
+call "$JAR_X" GET /api/onboarding/status ""
+note "status: $(cat "$BODY")"
+check "availability is detected as done" 200 "j.steps.availability.done" "true"
 if [ "$SYL_OK" = "1" ]; then
-  [ "$HAS_SYL" = "true" ] && pass "syllabus step detected as done" || { STATUS="-"; : > "$BODY"; fail "syllabus step detected as done"; }
+  check "the syllabus step is detected as done, nothing pending" 200 "j.steps.syllabus.done && j.steps.syllabus.pending===0" "true"
 else
   note "(skipped: the syllabus step did not complete in this run)"
 fi
 if [ "$PLAN_OK" = "1" ]; then
-  [ "$HAS_PLAN" = "true" ] && pass "first plan detected as done" || { STATUS="-"; : > "$BODY"; fail "first plan detected as done"; }
+  check "the plan is detected: onboarding is complete" 200 'j.completed+"|"+j.next_step' "true|null"
 else
   note "(skipped: the plan step did not complete in this run)"
 fi
@@ -378,6 +404,8 @@ if [ "$STATUS" = "200" ]; then
   expect_ok "both assignments are covered" "$(verify_coverage "$SESS_B" "$(cat "$BODY")")"
   call "$JAR_B" GET /api/study-sessions "";                            check "a preview saved nothing" 200 "j.length" "0"
 fi
+call "$JAR_B" GET /api/onboarding/status ""
+check "the user who skipped availability is sent straight to the plan step" 200 'j.next_step+"|"+j.steps.availability.done' "plan|false"
 
 # ===========================================================================
 section "7. Done"

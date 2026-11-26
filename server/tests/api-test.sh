@@ -99,6 +99,7 @@ ai_pause() { if [ "$AI_PAUSE" -gt 0 ]; then note "(waiting ${AI_PAUSE}s so the n
 # ---------------------------------------------------------------------------
 RUN="$RANDOM$RANDOM"
 PROJ_OLD=""
+COURSE_NEW=""
 USER_A="apitest_a_$RUN"; EMAIL_A="$USER_A@example.com"; PW_A="password123"
 USER_B="apitest_b_$RUN"; EMAIL_B="$USER_B@example.com"; PW_B="password123"
 
@@ -117,7 +118,7 @@ call "$JAR_X" POST /api/auth/login '{bad json';      check "malformed JSON body 
 call "$JAR_X" GET /api/courses "";                   check "protected route without a cookie -> 401" 401 "j.error" "No token found"
 STATUS=$(curl -s -o "$BODY" -w "%{http_code}" -H "Cookie: token=garbage" "$BASE/api/courses")
 check "garbage token -> 401" 401 "j.error" "Invalid or expired token"
-for p in assignments projects availability study-sessions settings dashboard/summary syllabi; do
+for p in assignments projects availability study-sessions settings dashboard/summary syllabi onboarding/status; do
   call "$JAR_X" GET "/api/$p" "";                    check "/api/$p requires login" 401
 done
 call "$JAR_X" POST /api/study-plan/generate '{}';    check "/api/study-plan requires login" 401
@@ -401,7 +402,7 @@ call "$JAR_A" DELETE "/api/projects/$PROJ/steps/abc" "";              check "bad
 section "12. Gemini: syllabus upload (no AI call for these)"
 # ===========================================================================
 call "$JAR_A" POST /api/syllabi "{\"course_id\":$COURSE1}";           check "no file and no text -> 400" 400
-call "$JAR_A" POST /api/syllabi '{"text":"hello"}';                   check "missing course_id -> 400" 400
+call "$JAR_A" POST /api/syllabi '{"text":"   "}';                      check "blank text and no file -> 400" 400
 call "$JAR_B" POST /api/syllabi "{\"course_id\":$COURSE1,\"text\":\"hello\"}"
 check "B uploads to A's course -> 404 (before any AI call)" 404
 printf 'this is definitely not a pdf' > /tmp/fake-$RUN.pdf
@@ -415,6 +416,34 @@ STATUS=$(curl -s -o "$BODY" -w "%{http_code}" -b "$JAR_A" -X POST -F "course_id=
 check "file AND text together -> 400" 400
 call "$JAR_A" GET /api/syllabi "";                                    check "syllabus list starts empty" 200 "j.length" "0"
 call "$JAR_A" GET /api/syllabi/999999 "";                             check "missing syllabus -> 404" 404
+
+# ===========================================================================
+section "12b. Onboarding status, and syllabi that have no course yet (no AI calls)"
+# ===========================================================================
+JAR_C=$(mktemp); TMPFILES="$TMPFILES $JAR_C"
+USER_C="apitest_c_$RUN"
+call "$JAR_C" POST /api/auth/register "{\"email\":\"$USER_C@example.com\",\"username\":\"$USER_C\",\"password\":\"password123\"}"; check "register a fresh user" 201
+call "$JAR_C" POST /api/auth/login "{\"identifier\":\"$USER_C\",\"password\":\"password123\"}";                                  check "log in" 200
+call "$JAR_C" GET /api/onboarding/status ""
+check "a new user is told to start with availability (which is optional)" 200 'j.next_step+"|"+j.completed+"|"+j.steps.availability.optional+"|"+j.pending_syllabus_id' "availability|false|true|null"
+check "status lists every step" 200 'Object.keys(j.steps).sort().join(",")' "availability,plan,syllabus"
+call "$JAR_C" POST /api/availability "{\"name\":\"Job\",\"category\":\"Work/job\",\"start_time\":\"$(iso_in 24)\",\"end_time\":\"$(iso_in 26)\"}"; check "add an availability block" 201
+call "$JAR_C" GET /api/onboarding/status "";                           check "then the app is told to ask for a syllabus" 200 'j.next_step+"|"+j.steps.availability.done' "syllabus|true"
+
+call "$JAR_C" POST /api/syllabi '{"course_id":"abc","text":"x"}';      check "a non-numeric course_id -> 400" 400
+call "$JAR_C" POST /api/syllabi "{\"course_id\":$COURSE1,\"text\":\"x\"}"; check "uploading into someone else's course -> 404 (before any AI call)" 404
+call "$JAR_C" GET "/api/syllabi?status=pending" "";                    check "no pending syllabi yet" 200 "j.length" "0"
+call "$JAR_C" GET "/api/syllabi?status=bogus" "";                      check "unknown status filter -> 400" 400
+call "$JAR_C" POST /api/syllabi/999999/apply '{}';                     check "apply a syllabus that doesn't exist -> 404" 404
+call "$JAR_C" DELETE /api/syllabi/999999 "";                           check "delete a syllabus that doesn't exist -> 404" 404
+call "$JAR_C" POST /api/syllabi/999999/apply '{"assignments":"nope"}'; check "assignments must be an array -> 400" 400
+call "$JAR_C" POST /api/syllabi/999999/apply '{"course":"Biology"}';   check "course must be an object -> 400" 400
+call "$JAR_C" POST /api/syllabi/999999/apply '{"assignments":[{"title":"x"}]}'
+check "an edited assignment without a due date -> 400 naming the item" 400 "j.error" "assignments[0].due_date is required"
+call "$JAR_C" POST /api/syllabi/999999/apply '{"class_schedule":[{"day_of_week":"Monday","start_time":"11:00","end_time":"10:00"}]}'
+check "an edited class time that ends before it starts -> 400" 400
+call "$JAR_C" POST /api/syllabi/999999/apply '{"assignments":[],"assignment_indexes":[0]}'
+check "assignments and assignment_indexes together -> 400" 400
 
 if [ "$SKIP_AI" = "1" ]; then
   section "AI tests skipped (SKIP_AI=1)"
@@ -455,6 +484,35 @@ if [ -n "$PDF" ] && [ -f "$PDF" ]; then
 else
   note "(set PDF=/path/to/syllabus.pdf to also test a real PDF upload)"
 fi
+fi
+
+# ===========================================================================
+section "13b. Gemini: upload with NO course, edit it, approve it (the course is created)"
+# ===========================================================================
+NEW_TEXT="CHEM 101 Intro Chemistry, Spring 2027. Instructor: Dr. Okafor. Lectures Tuesday and Thursday 9:00 AM to 10:15 AM. Problem Set 1 is due $(date_text 12) at 11:59 PM. The final exam is on $(date_text 20) at 1:00 PM."
+PAYLOAD=$(node -e 'console.log(JSON.stringify({text: process.argv[1]}))' -- "$NEW_TEXT")
+ai_pause
+call "$JAR_A" POST /api/syllabi "$PAYLOAD"
+check "a syllabus can be uploaded before any course exists" 201 'j.course_id===null && j.status==="pending"' "true"
+if [ "$STATUS" != "201" ]; then
+  note "Skipping the rest of this section (the AI call failed)."
+else
+SYL_NEW=$(id_of)
+call "$JAR_A" GET /api/courses "";                                     check "the course list did not change" 200 "j.length" "2"
+call "$JAR_A" GET /api/onboarding/status ""
+check "status points at the review screen, with this syllabus" 200 "j.next_step+\"|\"+(j.pending_syllabus_id==$SYL_NEW)" "review_syllabus|true"
+call "$JAR_A" GET "/api/syllabi?status=pending" "";                    check "it is listed as pending" 200 "j.length===1 && j[0].id==$SYL_NEW && j[0].course_id===null" "true"
+call "$JAR_B" POST "/api/syllabi/$SYL_NEW/apply" '{}';                 check "B can't approve A's syllabus -> 404" 404
+EDITED="{\"course\":{\"name\":\"Intro Chemistry (edited)\",\"color_code\":\"#1565C0\"},\"class_schedule\":[{\"day_of_week\":\"tuesday\",\"start_time\":\"09:00\",\"end_time\":\"10:15\"}],\"assignments\":[{\"title\":\"Problem Set 1 (edited)\",\"due_date\":\"$(iso_in 288)\",\"estimated_hours\":2.5},{\"title\":\"Added by the student\",\"due_date\":\"$(iso_in 300)\"}]}"
+call "$JAR_A" POST "/api/syllabi/$SYL_NEW/apply" "$EDITED"
+check "approve with edits: the course is created from them" 200 'j.course_created===true && j.assignments_created===2 && j.schedule_applied===true' "true"
+COURSE_NEW=$(jeval "j.course_id")
+call "$JAR_A" GET "/api/courses/$COURSE_NEW" ""
+check "the course has exactly what the student approved" 200 'j.name+"|"+j.color_code+"|"+j.assignments.length+"|"+j.schedules.length+"|"+j.schedules[0].day_of_week' "Intro Chemistry (edited)|#1565C0|2|1|Tuesday"
+check "details the student did not edit were kept (teacher)" 200 '/okafor/i.test(j.teacher_name||"")' "true"
+call "$JAR_A" GET /api/courses "";                                     check "the new course is in the list" 200 "j.length" "3"
+call "$JAR_A" GET "/api/syllabi/$SYL_NEW" "";                          check "the syllabus is applied and linked to the new course" 200 "j.status+\"|\"+(j.course_id==$COURSE_NEW)" "applied|true"
+call "$JAR_A" POST "/api/syllabi/$SYL_NEW/apply" '{}';                 check "approving twice -> 409" 409
 fi
 
 # ===========================================================================
@@ -532,6 +590,7 @@ call "$JAR_A" GET "/api/courses/$COURSE1" "";                         check "del
 call "$JAR_A" GET "/api/assignments?course_id=$COURSE1" "";           check "its assignments were deleted with it (cascade)" 200 "j.length" "0"
 call "$JAR_A" DELETE "/api/courses/$COURSE2" "";                      check "delete course 2" 200
 call "$JAR_A" DELETE "/api/courses/$COURSE2" "";                      check "delete again -> 404" 404
+if [ -n "$COURSE_NEW" ]; then call "$JAR_A" DELETE "/api/courses/$COURSE_NEW" ""; check "delete the course created from the syllabus" 200; fi
 call "$JAR_A" DELETE "/api/projects/$PROJ" "";                        check "delete project" 200
 if [ -n "$PROJ_OLD" ]; then call "$JAR_A" DELETE "/api/projects/$PROJ_OLD" ""; check "delete the overdue project" 200; fi
 call "$JAR_A" GET "/api/projects/$PROJ" "";                           check "deleted project is gone -> 404" 404
